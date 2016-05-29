@@ -6,4 +6,4 @@ before_install:
 script:
   - free -h
   - cat /proc/cpuinfo
-  - mvn clean install
+  - mvn clean install -DskipTests
