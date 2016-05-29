@@ -5,7 +5,7 @@ before_install:
   - echo "MAVEN_OPTS='-Xmx2g -XX:MaxPermSize=1024m'" > ~/.mavenrc
 script:
   - set -e
-  - free -g
+  - free -m
   - lscpu
   - mvn clean install -DskipTests
 cache:
