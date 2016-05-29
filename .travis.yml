@@ -7,5 +7,4 @@ script:
   - set -e
   - free -g
   - lscpu
-  - cat /proc/cpuinfo
   - mvn clean install -DskipTests
