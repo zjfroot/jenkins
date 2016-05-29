@@ -352,6 +352,9 @@ THE SOFTWARE.
           <configuration>
             <fork>true</fork>
             <compilerReuseStrategy>alwaysNew</compilerReuseStrategy>
+            <compilerArgs>
+              <arg>-verbose</arg>
+            </compilerArgs>
           </configuration>
         </plugin>
         <plugin>
