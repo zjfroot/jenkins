@@ -355,6 +355,8 @@ THE SOFTWARE.
             <compilerArgs>
               <arg>-verbose</arg>
             </compilerArgs>
+            <meminitial>128m</meminitial>
+            <maxmem>1024m</maxmem>
           </configuration>
         </plugin>
         <plugin>
