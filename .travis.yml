@@ -4,6 +4,6 @@ jdk:
 before_install:
   - echo "MAVEN_OPTS='-Xmx2g -XX:MaxPermSize=1024m'" > ~/.mavenrc
 script:
-  - free -h
+  - free -g
   - cat /proc/cpuinfo
   - mvn clean install -DskipTests
