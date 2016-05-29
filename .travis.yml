@@ -8,3 +8,6 @@ script:
   - free -g
   - lscpu
   - mvn clean install -DskipTests
+cache:
+  directories:
+  - $HOME/.m2
