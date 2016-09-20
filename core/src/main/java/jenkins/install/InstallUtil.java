@@ -40,6 +40,7 @@ import javax.annotation.Nonnull;
 import javax.inject.Provider;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.StringUtils;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
 
@@ -50,11 +51,6 @@ import hudson.Functions;
 import hudson.Main;
 import hudson.model.UpdateCenter.DownloadJob.InstallationStatus;
 import hudson.model.UpdateCenter.DownloadJob.Installing;
-import hudson.security.AuthorizationStrategy;
-import hudson.security.FullControlOnceLoggedInAuthorizationStrategy;
-import hudson.security.HudsonPrivateSecurityRealm;
-import hudson.security.SecurityRealm;
-import hudson.security.csrf.DefaultCrumbIssuer;
 import hudson.model.UpdateCenter.InstallationJob;
 import hudson.model.UpdateCenter.UpdateCenterJob;
 import hudson.util.VersionNumber;
@@ -74,6 +70,7 @@ public class InstallUtil {
 
     // tests need this to be 1.0
     private static final VersionNumber NEW_INSTALL_VERSION = new VersionNumber("1.0");
+    private static final VersionNumber FORCE_NEW_INSTALL_VERSION = new VersionNumber("0.0");
 
     /**
      * Simple chain pattern using iterator.next()
@@ -93,10 +90,6 @@ public class InstallUtil {
      * Proceed to the state following the provided one
      */
     public static void proceedToNextStateFrom(InstallState prior) {
-        InstallState current = Jenkins.getInstance().getInstallState();
-        if (!current.equals(prior)) {
-            if (Main.isDevelopmentMode) LOGGER.warning("Transitioning state from: " + prior + ", but current is: " + current);
-        }
         InstallState next = getNextInstallState(prior);
         if (Main.isDevelopmentMode) LOGGER.info("Install state tranisitioning from: " + prior + " to: " + next);
         if (next != null) {
@@ -175,7 +168,7 @@ public class InstallUtil {
 
         // Neither the top level config or the lastExecVersionFile have a version
         // stored in them, which means it's a new install.
-        if (lastRunVersion.compareTo(NEW_INSTALL_VERSION) == 0) {
+        if (FORCE_NEW_INSTALL_VERSION.equals(lastRunVersion) || lastRunVersion.compareTo(NEW_INSTALL_VERSION) == 0) {
             Jenkins j = Jenkins.getInstance();
             
             // Allow for skipping
@@ -190,11 +183,13 @@ public class InstallUtil {
                 }
             }
 
-            // Edge case: used Jenkins 1 but did not save the system config page,
-            // the version is not persisted and returns 1.0, so try to check if
-            // they actually did anything
-            if (!j.getItemMap().isEmpty() || !mayBeJenkins2SecurityDefaults(j) || !j.getNodes().isEmpty()) {
-                return InstallState.UPGRADE;
+            if (!FORCE_NEW_INSTALL_VERSION.equals(lastRunVersion)) {
+                // Edge case: used Jenkins 1 but did not save the system config page,
+                // the version is not persisted and returns 1.0, so try to check if
+                // they actually did anything
+                if (!j.getItemMap().isEmpty() || !j.getNodes().isEmpty()) {
+                    return InstallState.UPGRADE;
+                }
             }
             
             return InstallState.INITIAL_SECURITY_SETUP;
@@ -211,30 +206,6 @@ public class InstallUtil {
             // Last running version was the same as "this" running version.
             return InstallState.RESTART;
         }
-    }
-
-    /**
-     * This could be an upgrade, detect a non-default security realm for the stupid case
-     * where someone installed 1.x and did not save global config or create any items...
-     */
-    private static boolean mayBeJenkins2SecurityDefaults(Jenkins j) {
-        // may be called before security set up first
-        if(j.getSecurityRealm() == SecurityRealm.NO_AUTHENTICATION && !(j.getCrumbIssuer() instanceof DefaultCrumbIssuer)) { 
-            return true;
-        }
-        if(j.getSecurityRealm() instanceof HudsonPrivateSecurityRealm) { // might be called after a restart, setup isn't complete
-            HudsonPrivateSecurityRealm securityRealm = (HudsonPrivateSecurityRealm)j.getSecurityRealm();
-            if(securityRealm.getAllUsers().size() == 1 && securityRealm.getUser(SetupWizard.initialSetupAdminUserName) != null) {
-                AuthorizationStrategy authStrategy = j.getAuthorizationStrategy();
-                if(authStrategy instanceof FullControlOnceLoggedInAuthorizationStrategy) {
-                    // must have been using 2.0+ to set this, as it wasn't present in 1.x and the default is true, to _allow_ anon read
-                    if(!((FullControlOnceLoggedInAuthorizationStrategy)authStrategy).isAllowAnonymousRead()) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
     }
 
     /**
@@ -260,7 +231,13 @@ public class InstallUtil {
         File lastExecVersionFile = getLastExecVersionFile();
         if (lastExecVersionFile.exists()) {
             try {
-                return FileUtils.readFileToString(lastExecVersionFile);
+                String version = FileUtils.readFileToString(lastExecVersionFile);
+                // JENKINS-37438 blank will force the setup
+                // wizard regardless of current state of the system
+                if (StringUtils.isBlank(version)) {
+                    return FORCE_NEW_INSTALL_VERSION.toString();
+                }
+                return version;
             } catch (IOException e) {
                 LOGGER.log(SEVERE, "Unexpected Error. Unable to read " + lastExecVersionFile.getAbsolutePath(), e);
                 LOGGER.log(WARNING, "Unable to determine the last running version (see error above). Treating this as a restart. No plugins will be updated.");

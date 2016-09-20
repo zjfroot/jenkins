@@ -130,6 +130,10 @@ public class UpdateSite {
      */
     private final String url;
 
+    /**
+     * the prefix for the signature validator name
+     */
+    private static final String signatureValidatorPrefix = "update site";
 
 
     public UpdateSite(String id, String url) {
@@ -219,6 +223,20 @@ public class UpdateSite {
     }
 
     /**
+     * Extension point to allow implementations of {@link UpdateSite} to create a custom
+     * {@link UpdateCenter.InstallationJob}.
+     *
+     * @param plugin      the plugin to create the {@link UpdateCenter.InstallationJob} for.
+     * @param uc          the {@link UpdateCenter}.
+     * @param dynamicLoad {@code true} if the plugin should be attempted to be dynamically loaded.
+     * @return the {@link UpdateCenter.InstallationJob}.
+     * @since 2.9
+     */
+    protected UpdateCenter.InstallationJob createInstallationJob(Plugin plugin, UpdateCenter uc, boolean dynamicLoad) {
+        return uc.new InstallationJob(plugin, this, Jenkins.getAuthentication(), dynamicLoad);
+    }
+
+    /**
      * Verifies the signature in the update center data file.
      */
     private FormValidation verifySignature(JSONObject o) throws IOException {
@@ -228,10 +246,28 @@ public class UpdateSite {
     /**
      * Let sub-classes of UpdateSite provide their own signature validator.
      * @return the signature validator.
+     * @deprecated use {@link #getJsonSignatureValidator(@CheckForNull String)} instead.
      */
+    @Deprecated
     @Nonnull
     protected JSONSignatureValidator getJsonSignatureValidator() {
-        return new JSONSignatureValidator("update site '"+id+"'");
+        return getJsonSignatureValidator(null);
+    }
+
+    /**
+     * Let sub-classes of UpdateSite provide their own signature validator.
+     * @param name, the name for the JSON signature Validator object.
+     *              if name is null, then the default name will be used,
+     *              which is "update site" followed by the update site id
+     * @return the signature validator.
+     * @since 2.21
+     */
+    @Nonnull
+    protected JSONSignatureValidator getJsonSignatureValidator(@CheckForNull String name) {
+        if (name == null) {
+            name = signatureValidatorPrefix + " '" + id + "'";
+        }
+        return new JSONSignatureValidator(name);
     }
 
     /**
@@ -406,6 +442,28 @@ public class UpdateSite {
     @Exported
     public String getUrl() {
         return url;
+    }
+
+
+    /**
+     * URL which exposes the metadata location in a specific update site.
+     * @param downloadable, the downloadable id of a specific metatadata json (e.g. hudson.tasks.Maven.MavenInstaller.json)
+     * @return the location
+     * @since 2.20
+     */
+    @CheckForNull
+    @Restricted(NoExternalUse.class)
+    public String getMetadataUrlForDownloadable(String downloadable) {
+        String siteUrl = getUrl();
+        String updateSiteMetadataUrl = null;
+        int baseUrlEnd = siteUrl.indexOf("update-center.json");
+        if (baseUrlEnd != -1) {
+            String siteBaseUrl = siteUrl.substring(0, baseUrlEnd);
+            updateSiteMetadataUrl = siteBaseUrl + "updates/" + downloadable;
+        } else {
+            LOGGER.log(Level.WARNING, "Url {0} does not look like an update center:", siteUrl);
+        }
+        return updateSiteMetadataUrl;
     }
 
     /**
@@ -872,7 +930,7 @@ public class UpdateSite {
                     return enableJob != null ? enableJob : uc.addJob(uc.new NoOpJob(UpdateSite.this, null, this));
                 }
             }
-            UpdateCenter.InstallationJob job = uc.new InstallationJob(this, UpdateSite.this, Jenkins.getAuthentication(), dynamicLoad);
+            UpdateCenter.InstallationJob job = createInstallationJob(this, uc, dynamicLoad);
             job.setCorrelationId(correlationId);
             return uc.addJob(job);
         }
